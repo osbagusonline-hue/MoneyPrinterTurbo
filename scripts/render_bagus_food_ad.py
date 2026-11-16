@@ -1,88 +1,237 @@
-"""Render a 10-second 9:16 Bagus commercial with real product/meal images.
+"""Render a tested 10-second portrait commercial; optional Ark Seedance footage.
 
-Requires ffmpeg, ffprobe, edge-tts and network access for Microsoft Edge TTS.
-This is a motion-graphics MP4, not generative image-to-video footage.
+Default mode animates images. Product pixels never pass through a video model.
 """
 import argparse
 import asyncio
+import importlib
+import json
+import math
 import os
 from pathlib import Path
+import re
+import ssl
 import subprocess
 import tempfile
+import wave
+from array import array
 
-import edge_tts
+from PIL import Image, ImageDraw, ImageFont
 
-VOICE = "ms-MY-YasminNeural"
-SPEECH = "Nak makan lebih berselera? Cuba Bagus Sambal Belacan! Dapatkan sekarang di Bagusmart!"
-W, H = 1080, 1920
+ROOT = Path(__file__).resolve().parents[1]
+ASSETS = ROOT / 'assets/food_ads'
+VOICE = 'ms-MY-YasminNeural'
+SPEECH = 'Nasi putih, ulam, ikan goreng. Lagi berselera dengan Bagus Sambal Belacan. Dapatkan di Bagusmart!'
+W, H, FPS = 1080, 1920, 30
+FONT = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
+BOLD = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
 
 
 def run(*args):
-    subprocess.run(args, check=True)
+    subprocess.run([str(a) for a in args], check=True, timeout=300)
 
 
-def filter_text(value):
-    # FFmpeg drawtext requires escaping punctuation that affects filter parsing.
-    return value.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'").replace("%", "\\%")
+def probe(path):
+    return json.loads(subprocess.check_output([
+        'ffprobe', '-v', 'error', '-show_streams', '-show_format', '-of', 'json', str(path)]))
 
 
-def image_segment(image, output, seconds, title, subtitle):
-    # Render the image uncropped and with a dark background; animated zoom on
-    # stills is intentionally avoided to preserve legibility of bottle labels.
-    vf = (
-        f"scale={W}:{H}:force_original_aspect_ratio=decrease,"
-        f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=0x17100e,"
-        "format=yuv420p,"
-        f"drawbox=x=0:y=1540:w=iw:h=380:color=black@0.64:t=fill,"
-        f"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:"
-        f"text='{filter_text(title)}':fontcolor=white:fontsize=64:x=(w-text_w)/2:y=1580,"
-        f"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
-        f"text='{filter_text(subtitle)}':fontcolor=white:fontsize=42:x=(w-text_w)/2:y=1700"
-    )
-    run("ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-        "-loop", "1", "-framerate", "30", "-i", str(image),
-        "-t", str(seconds), "-vf", vf,
-        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-r", "30",
-        "-an", str(output))
+def validate(path):
+    data = probe(path)
+    v = next(s for s in data['streams'] if s['codec_type'] == 'video')
+    a = next(s for s in data['streams'] if s['codec_type'] == 'audio')
+    if (v['width'], v['height'], v['codec_name'], v['pix_fmt']) != (W, H, 'h264', 'yuv420p'):
+        raise ValueError('Output is not compatible 1080x1920 H.264/yuv420p')
+    if abs(float(data['format']['duration']) - 10) > 0.05 or a['codec_name'] != 'aac':
+        raise ValueError('Output must be 10 seconds with AAC audio')
+    return data
 
 
-async def generate_voice(path):
-    await edge_tts.Communicate(SPEECH, VOICE, rate="+12%").save(str(path))
+def text(draw, y, message, size=64, color='#fff6df', bold=False):
+    font = ImageFont.truetype(BOLD if bold else FONT, size)
+    # Fit long CTA strings within title-safe horizontal margins.
+    while draw.textbbox((0, 0), message, font=font)[2] > W - 150 and size > 20:
+        size -= 2
+        font = ImageFont.truetype(BOLD if bold else FONT, size)
+    draw.text((W // 2, y), message, font=font, fill=color, anchor='mt')
 
 
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--bottle", required=True, type=Path)
-    p.add_argument("--meal", required=True, type=Path)
-    p.add_argument("--output", required=True, type=Path)
-    args = p.parse_args()
+def layouts(bottle, directory, cta):
+    bottle = Image.open(bottle).convert('RGBA')
+    # Contain the complete supplied reference including its label; no invented packaging.
+    for i in range(3):
+        card = Image.new('RGBA', (W, H))
+        d = ImageDraw.Draw(card)
+        for y in range(H):
+            alpha = int(165 * max(0, 1-y/650)) + int(210 * max(0, (y-1400)/520))
+            d.line((0, y, W, y), fill=(12, 19, 11, min(240, alpha)))
+        if i == 0:
+            text(d, 200, 'Biar ringkas.', 86, bold=True)
+            text(d, 310, 'Asal berselera.', 74)
+            text(d, 440, 'NASI PUTIH  ·  ULAM  ·  IKAN GORENG', 30, '#e5ca87')
+        else:
+            d.rectangle((0, 0, W, H), fill=(14, 27, 18, 210 if i == 1 else 255))
+            text(d, 170, 'BAGUS', 54, '#e4be6b', True)
+            text(d, 260, 'Sambal Belacan', 84, bold=True)
+            text(d, 365, 'TRADITIONAL', 29, '#e4be6b')
+            pack = bottle.copy()
+            pack.thumbnail((650, 880 if i == 1 else 780), Image.Resampling.LANCZOS)
+            # thumbnail does not enlarge; resize preserving aspect for the low-res source.
+            height = 880 if i == 1 else 780
+            pack = bottle.resize((round(bottle.width * height / bottle.height), height), Image.Resampling.LANCZOS)
+            card.alpha_composite(pack, ((W-pack.width)//2, 480))
+            d = ImageDraw.Draw(card)
+            if i == 1:
+                text(d, 1440, 'Lagi berselera.', 66, bold=True)
+            else:
+                d.rounded_rectangle((150, 1330, 930, 1445), radius=57, fill='#e4be6b')
+                text(d, 1360, 'DAPATKAN DI BAGUSMART', 40, '#102218', True)
+                text(d, 1490, cta, 49)
+        card.save(directory / f'card{i}.png')
+
+
+def compose_music(path):
+    """Original instrumental bed, generated locally: soft plucks, pad and pulse."""
+    rate = 44100
+    samples = array('h')
+    notes = [220, 261.63, 329.63, 392, 329.63, 261.63, 293.66, 329.63]
+    for n in range(rate * 10):
+        t = n / rate
+        beat = int(t / 0.375)
+        u = t % 0.375
+        f = notes[beat % len(notes)]
+        pluck = math.exp(-u * 10) * (math.sin(2*math.pi*f*t) + .3*math.sin(4*math.pi*f*t))
+        pad = sum(math.sin(2*math.pi*f0*t) for f0 in (110, 130.81, 164.81)) / 6
+        kick = math.exp(-(t % .75)*24) * math.sin(2*math.pi*58*t)
+        fade = min(1, t/.3, (10-t)/.7)
+        samples.append(int(6000 * fade * (.55*pluck + .30*pad + .15*kick)))
+    with wave.open(str(path), 'wb') as out:
+        out.setparams((1, 2, rate, 0, 'NONE', 'not compressed'))
+        out.writeframes(samples.tobytes())
+
+
+async def generate_voice(audio, subtitles):
+    import edge_tts
+    # Honor managed proxy trust while keeping TLS verification enabled.
+    if os.getenv('SSL_CERT_FILE'):
+        importlib.import_module('edge_tts.communicate')._SSL_CTX = ssl.create_default_context(cafile=os.environ['SSL_CERT_FILE'])
+    c = edge_tts.Communicate(SPEECH, VOICE, rate='+5%', boundary='WordBoundary',
+                            proxy=os.getenv('HTTPS_PROXY') or os.getenv('HTTP_PROXY'))
+    words = edge_tts.SubMaker()
+    with audio.open('wb') as f:
+        async for chunk in c.stream():
+            if chunk['type'] == 'audio':
+                f.write(chunk['data'])
+            elif chunk['type'] == 'WordBoundary':
+                words.feed(chunk)
+    subtitles.write_text(words.get_srt(), encoding='utf-8')
+
+
+def grouped_subtitles(source, target):
+    # Group the actual TTS word boundaries into short readable captions.
+    blocks = re.split(r'\n\s*\n', source.read_text(encoding='utf-8-sig').strip())
+    entries = []
+    for block in blocks:
+        lines = block.splitlines()
+        if len(lines) >= 3 and ' --> ' in lines[1]:
+            start, end = lines[1].split(' --> ')
+            entries.append((start, end, ' '.join(lines[2:])))
+    if not entries:
+        raise ValueError('No timed subtitle cues supplied')
+    groups = []
+    for start, end, word in entries:
+        if not groups or word in ('Lagi', 'Dapatkan'):
+            groups.append([start, end, word])
+        else:
+            groups[-1][1] = end
+            groups[-1][2] += ' ' + word
+    target.write_text('\n\n'.join(f'{i}\n{s} --> {e}\n{txt}' for i, (s,e,txt) in enumerate(groups, 1))+'\n', encoding='utf-8')
+
+
+def render(args):
     for path in (args.bottle, args.meal):
-        if not path.is_file() or path.suffix.lower() not in (".png", ".jpg", ".jpeg"):
-            p.error(f"Missing valid image: {path}. Upload real assets before running.")
+        with Image.open(path) as im:
+            im.verify()
     args.output.parent.mkdir(parents=True, exist_ok=True)
+    audio, words = args.voice_audio, args.subtitles
+    if bool(audio) != bool(words):
+        raise ValueError('Supply both --voice-audio and --subtitles')
     with tempfile.TemporaryDirectory() as temp:
         t = Path(temp)
-        parts = [t / f"part{i}.mp4" for i in range(3)]
-        image_segment(args.bottle, parts[0], 3, "BAGUS SAMBAL BELACAN", "Traditional")
-        image_segment(args.meal, parts[1], 4, "NASI, ULAM & IKAN GORENG", "Sedap dengan sambal belacan")
-        image_segment(args.bottle, parts[2], 3, "SHOP NOW", "bagusmart.sg  |  TikTok Bagusmart")
-        playlist = t / "concat.txt"
-        playlist.write_text("".join(f"file '{part.as_posix()}'\n" for part in parts))
-        video = t / "video.mp4"
-        run("ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-            "-f", "concat", "-safe", "0", "-i", str(playlist),
-            "-c", "copy", str(video))
-        voice = t / "voice.mp3"
-        asyncio.run(generate_voice(voice))
-        # Pad or trim audio to precisely 10 seconds, preserving video duration.
-        run("ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-            "-i", str(video), "-i", str(voice),
-            "-filter_complex", "[1:a]apad,atrim=duration=10,asetpts=N/SR/TB[a]",
-            "-map", "0:v:0", "-map", "[a]",
-            "-c:v", "copy", "-c:a", "aac", "-b:a", "160k",
-            "-t", "10", "-movflags", "+faststart", str(args.output))
-    print(f"Created {args.output}")
+        if not audio:
+            audio, words = t/'voice.mp3', t/'words.srt'
+            asyncio.run(generate_voice(audio, words))
+        voice_length = float(probe(audio)['format']['duration'])
+        if voice_length > 10:
+            raise ValueError('Voiceover exceeds 10s; shorten or speed it up before rendering')
+        caption_path = args.output.with_suffix('.srt')
+        grouped_subtitles(words, caption_path)
+        # Use a simple temp name so user paths cannot inject FFmpeg filter syntax.
+        (t/'captions.srt').write_bytes(caption_path.read_bytes())
+        layouts(args.bottle, t, args.cta)
+        music = args.music or t/'music.wav'
+        if not args.music:
+            compose_music(music)
+        footage = args.footage
+        if args.provider == 'seedance':
+            if footage:
+                raise ValueError('Choose --footage or --provider seedance')
+            from food_ad_provider import generate_meal
+            footage = generate_meal(args.meal, args.cache)
+        if footage:
+            if float(probe(footage)['format']['duration']) < 9.9:
+                raise ValueError('Generated/supplied footage must be at least 10 seconds')
+            source = ['-i', footage]
+            background = f'scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},fps=30,setsar=1'
+        else:
+            source = ['-loop', '1', '-framerate', '30', '-i', args.meal]
+            background = (f'scale=2160:3840:force_original_aspect_ratio=increase,crop=2160:3840,'
+                          f"zoompan=z='1+0.00035*on':x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d=1:s={W}x{H}:fps=30,setsar=1")
+        vf = f'[0:v]{background}[bg];'
+        for i, (start, end) in enumerate(((0,3),(3,7),(7,10))):
+            prev = 'bg' if i == 0 else f'v{i-1}'
+            vf += f"[{prev}][{i+1}:v]overlay=enable='gte(t,{start})*lt(t,{end})'[v{i}];"
+        style = 'FontName=DejaVu Sans,FontSize=8,PrimaryColour=&H00FFFFFF,OutlineColour=&H00131B10,BorderStyle=3,Outline=2,Shadow=0,MarginV=22'
+        vf += f"[v2]subtitles=filename={t/'captions.srt'}:force_style='{style}',format=yuv420p[v];"
+        vf += ('[4:a]aresample=48000,apad,atrim=duration=10,asetpts=PTS-STARTPTS,asplit=2[voice][sc];'
+               '[5:a]aresample=48000,apad,atrim=duration=10,volume=0.55[bed];'
+               '[bed][sc]sidechaincompress=threshold=0.025:ratio=6:attack=10:release=250[duck];'
+               '[voice][duck]amix=inputs=2:duration=longest:normalize=0,alimiter=limit=0.95[a]')
+        command = ['ffmpeg','-hide_banner','-loglevel','error','-y','-filter_complex_threads','2',*source]
+        for i in range(3):
+            command += ['-loop','1','-i',t/f'card{i}.png']
+        command += ['-i',audio,'-i',music,'-filter_complex',vf,'-map','[v]','-map','[a]',
+                    '-t','10','-r','30','-c:v','libx264','-threads','2','-preset','medium','-crf','19',
+                    '-c:a','aac','-b:a','192k','-ar','48000','-movflags','+faststart',args.output]
+        run(*command)
+    info = validate(args.output)
+    args.output.with_suffix('.probe.json').write_text(json.dumps(info, indent=2))
+    args.output.with_suffix('.manifest.json').write_text(json.dumps({
+        'duration_seconds':10, 'mode':'seedance' if args.provider=='seedance' else 'supplied_footage' if args.footage else 'animated_stills',
+        'bottle':str(args.bottle), 'meal':str(args.meal), 'voice':VOICE, 'speech':SPEECH,
+        'music':'supplied' if args.music else 'original procedural instrumental', 'cta':args.cta,
+        'note':'Food is an AI-generated serving illustration. Actual supplied bottle image is composited unchanged.'
+    }, indent=2))
+    print(f'Created and validated {args.output}')
 
 
-if __name__ == "__main__":
-    main()
+def parser():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--bottle', type=Path, default=ASSETS/'bagus_bottle.png')
+    p.add_argument('--meal', type=Path, default=ASSETS/'nasi_putih_ulam_fried_fish.png')
+    p.add_argument('--output', type=Path, default=ROOT/'dist/bagus_sambal_belacan_10s.mp4')
+    p.add_argument('--provider', choices=['stills','seedance'], default='stills')
+    p.add_argument('--footage', type=Path)
+    p.add_argument('--cache', type=Path, default=ROOT/'storage/food_ad_provider')
+    p.add_argument('--voice-audio', type=Path)
+    p.add_argument('--subtitles', type=Path)
+    p.add_argument('--music', type=Path)
+    p.add_argument('--cta', default='bagusmart.sg')
+    return p
+
+
+if __name__ == '__main__':
+    try:
+        render(parser().parse_args())
+    except (ValueError, RuntimeError, OSError, subprocess.SubprocessError) as exc:
+        raise SystemExit(str(exc)) from None

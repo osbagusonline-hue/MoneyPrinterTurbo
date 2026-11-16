@@ -1,0 +1,5 @@
+# Lightweight renderer; the full WebUI environment already supplies these packages.
+edge-tts==7.3.1
+Pillow==11.3.0
+requests==2.33.1
+filelock==4.2.1
