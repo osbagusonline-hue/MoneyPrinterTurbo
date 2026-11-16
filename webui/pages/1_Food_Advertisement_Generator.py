@@ -4,6 +4,11 @@ This Streamlit page creates editable production instructions. Rendering remains
 in the existing MoneyPrinterTurbo video workflow.
 """
 import json
+from pathlib import Path
+import os
+import subprocess
+import sys
+import tempfile
 import streamlit as st
 
 st.set_page_config(page_title="AI Food Advertisement Generator", page_icon="🍜", layout="wide")
@@ -80,3 +85,53 @@ if submitted:
         "Use the existing MoneyPrinterTurbo generation workflow to render scenes. "
         "Uploaded reference photos are not sent to a video provider by this page."
     )
+
+st.divider()
+st.subheader("Render a 10-second Bagus commercial")
+st.write("1080 × 1920 MP4 with the real bottle, nasi putih, Malay female voice, music, captions and Bagusmart CTA.")
+
+root = Path(__file__).resolve().parents[2]
+assets = root / "assets/food_ads"
+mode = st.selectbox("Food visuals", ["Animate supplied images (no paid video API)", "Seedance image-to-video (paid Ark credits)"])
+bottle_upload = st.file_uploader("Bottle photo for the commercial", type=["png", "jpg", "jpeg"], key="render_bottle")
+meal_upload = st.file_uploader("Meal reference (default: AI nasi putih serving illustration)", type=["png", "jpg", "jpeg"], key="render_meal")
+render_cta = st.text_input("End-card website", value="bagusmart.sg", max_chars=80)
+st.caption("The supplied bottle is composited directly. The food reference is sent to Ark only when Seedance is selected. The cached Malay narration says Bagus Sambal Belacan and Bagusmart.")
+if st.button("Generate MP4", type="primary"):
+    st.session_state.pop("bagus_render", None)
+    if mode.startswith("Seedance") and not os.getenv("VOLCENGINE_ARK_API_KEY", "").strip():
+        st.error("Configure VOLCENGINE_ARK_API_KEY in the server environment and fund Ark video credits first.")
+    else:
+        with tempfile.TemporaryDirectory(prefix="bagus-ad-") as temp:
+            work = Path(temp)
+            bottle = assets / "bsb.png"
+            meal = assets / "nasi_putih_ulam_fried_fish.png"
+            if bottle_upload:
+                bottle = work / ("bottle" + Path(bottle_upload.name).suffix.lower())
+                bottle.write_bytes(bottle_upload.getvalue())
+            if meal_upload:
+                meal = work / ("meal" + Path(meal_upload.name).suffix.lower())
+                meal.write_bytes(meal_upload.getvalue())
+            output = work / "bagus_sambal_belacan_10s.mp4"
+            command = [sys.executable, str(root / "scripts/render_bagus_food_ad.py"),
+                       "--bottle", str(bottle), "--meal", str(meal), "--output", str(output),
+                       "--voice-audio", str(assets / "bagus_ms_Yasmin.mp3"),
+                       "--subtitles", str(assets / "bagus_ms_Yasmin.words.srt"),
+                       "--cta", render_cta, "--provider", "seedance" if mode.startswith("Seedance") else "stills"]
+            try:
+                with st.spinner("Rendering commercial. Seedance may take several minutes…"):
+                    result = subprocess.run(command, capture_output=True, text=True, timeout=1000)
+                if result.returncode:
+                    st.error("Render failed. Check the server logs, media inputs and provider task receipt.")
+                    # Server logs are available to the operator; never render provider responses/keys in the UI.
+                    import logging
+                    logging.getLogger(__name__).error("Food ad render failed: %s", result.stderr[-3000:])
+                else:
+                    st.session_state["bagus_render"] = (output.read_bytes(), output.with_suffix(".srt").read_bytes())
+            except subprocess.TimeoutExpired:
+                st.error("Local wait ended. Check the saved Seedance task receipt before retrying; a paid task may still be running.")
+if "bagus_render" in st.session_state:
+    video_data, subtitle_data = st.session_state["bagus_render"]
+    st.video(video_data)
+    st.download_button("Download commercial MP4", video_data, "bagus_sambal_belacan_10s.mp4", "video/mp4")
+    st.download_button("Download Malay subtitles", subtitle_data, "bagus_sambal_belacan_10s.srt", "application/x-subrip")

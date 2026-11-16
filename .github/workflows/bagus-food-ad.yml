@@ -1,47 +1,81 @@
 name: Bagus Food Advertisement MP4
 on:
   push:
-    branches:
-      - main
+    branches: [main]
     paths:
       - 'assets/food_ads/**'
-      - 'projects/food_ads/**'
+      - 'scripts/render_bagus_food_ad.py'
+      - 'scripts/food_ad_provider.py'
+      - '.github/workflows/bagus-food-ad.yml'
+  pull_request:
+    paths:
+      - 'assets/food_ads/**'
+      - 'scripts/*food*'
+      - '.github/workflows/bagus-food-ad.yml'
+      - 'webui/pages/1_Food_Advertisement_Generator.py'
   workflow_dispatch:
     inputs:
+      provider:
+        description: 'stills is free; seedance submits one paid 10s image-to-video task'
+        type: choice
+        options: [stills, seedance]
+        default: stills
       bottle_path:
-        description: 'Repository path to original bottle PNG/JPG'
-        required: true
-        default: 'assets/food_ads/bagus_bottle.png'
+        description: 'Original bottle reference'
+        default: 'assets/food_ads/bsb.png'
       meal_path:
-        description: 'Repository path to nasi, ulam and fried fish PNG/JPG'
-        required: true
-        default: 'assets/food_ads/nasi_ulam_fried_fish.jpg'
+        description: 'Plain white rice, ulam and fried fish reference'
+        default: 'assets/food_ads/nasi_putih_ulam_fried_fish.png'
 permissions:
   contents: read
+concurrency:
+  group: bagus-food-ad-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
   render:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install FFmpeg and Malay voice generator
+      - name: Install render dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg fonts-dejavu-core
-          python -m pip install --upgrade pip
-          python -m pip install edge-tts==7.3.1
-      - name: Render commercial
+          python -m pip install -r requirements-food-ad.txt
+      - name: Test generator and provider contract
+        run: python -m unittest discover -s test/food_ads -v
+      - name: Restore paid task receipts
+        if: github.event_name == 'workflow_dispatch' && inputs.provider == 'seedance'
+        uses: actions/cache/restore@v4
+        with:
+          path: storage/food_ad_provider
+          key: food-ad-seedance-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: food-ad-seedance-${{ github.ref_name }}-
+      - name: Render and validate commercial
         env:
-          BOTTLE_PATH: ${{ inputs.bottle_path || 'assets/food_ads/bagus_bottle.png' }}
-          MEAL_PATH: ${{ inputs.meal_path || 'assets/food_ads/nasi_ulam_fried_fish.jpg' }}
+          BOTTLE_PATH: ${{ inputs.bottle_path || 'assets/food_ads/bsb.png' }}
+          MEAL_PATH: ${{ inputs.meal_path || 'assets/food_ads/nasi_putih_ulam_fried_fish.png' }}
+          FOOD_PROVIDER: ${{ inputs.provider || 'stills' }}
+          VOLCENGINE_ARK_API_KEY: ${{ secrets.VOLCENGINE_ARK_API_KEY }}
+          FOOD_AD_SEEDANCE_MODEL: ${{ vars.FOOD_AD_SEEDANCE_MODEL }}
         run: |
-          python scripts/render_bagus_food_ad.py --bottle "$BOTTLE_PATH" --meal "$MEAL_PATH" --output dist/bagus_sambal_belacan_10s.mp4
+          python scripts/render_bagus_food_ad.py --bottle "$BOTTLE_PATH" --meal "$MEAL_PATH" --provider "$FOOD_PROVIDER" --voice-audio assets/food_ads/bagus_ms_Yasmin.mp3 --subtitles assets/food_ads/bagus_ms_Yasmin.words.srt --output dist/bagus_sambal_belacan_10s.mp4
+          ffmpeg -v error -i dist/bagus_sambal_belacan_10s.mp4 -f null -
+      - name: Save paid task receipts even on failure
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.provider == 'seedance'
+        uses: actions/cache/save@v4
+        with:
+          path: storage/food_ad_provider
+          key: food-ad-seedance-${{ github.ref_name }}-${{ github.run_id }}
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: bagus-sambal-belacan-commercial
-          path: dist/bagus_sambal_belacan_10s.mp4
+          path: |
+            dist/bagus_sambal_belacan_10s.*
+            storage/food_ad_provider/*.json
           if-no-files-found: error
           retention-days: 14

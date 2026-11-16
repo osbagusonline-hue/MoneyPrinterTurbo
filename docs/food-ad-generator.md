@@ -1,9 +1,10 @@
 # AI Food Advertisement Generator
 
-Open the MoneyPrinterTurbo Streamlit WebUI and select **Food Advertisement Generator** from the page navigation.
+The MoneyPrinterTurbo Streamlit **Food Advertisement Generator** page has two sections:
 
-This initial feature builds three timed commercial scenes, visual prompts, voiceover direction and a downloadable JSON production plan. Enter product details, choose format, duration, language and visual style, then click **Create storyboard**.
+1. A general storyboard builder: product details, language, format, duration and style generate a downloadable JSON production plan. Its reference upload remains a browser-only visual aid.
+2. A working ten-second **Bagus commercial renderer**: actual bottle, nasi putih/ulam/fried-fish illustration, Malay female narration, music, timed subtitles and Bagusmart CTA. It previews and downloads an MP4 and SRT.
 
-The optional reference image is only a visual aid in the browser; it is not uploaded to a generation provider or embedded in JSON. The tool deliberately avoids invented product claims. **This version does not render MP4 video.** For video production, use the existing MoneyPrinterTurbo workflow with the generated prompts and real product assets.
+The Bagus renderer defaults to animated stills and cached narration, requiring no paid API. Its optional Seedance image-to-video mode uses the food reference, a secret `VOLCENGINE_ARK_API_KEY` and funded Ark credits. It preserves the supplied bottle by compositing it after footage generation. Generic storyboard settings do not change the fixed Bagus renderer.
 
-Recommended next integration: pass storyboard scenes into the existing task/video services, use user-approved reference assets for image-to-video generation, and assemble a final video with voiceover, subtitles and CTA. Test provider behavior and billing before enabling automation.
+See [rendering, credentials, testing and workflow diagnosis](bagus-github-actions.md) for commands, limitations and paid-task recovery.
