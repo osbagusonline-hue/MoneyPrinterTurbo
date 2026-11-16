@@ -180,7 +180,7 @@ def render(args):
             source = ['-i', footage]
             background = f'scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},fps=30,setsar=1'
         else:
-            source = ['-loop', '1', '-framerate', '30', '-i', args.meal]
+            source = ['-threads', '1', '-loop', '1', '-framerate', '30', '-i', args.meal]
             background = (f'scale=2160:3840:force_original_aspect_ratio=increase,crop=2160:3840,'
                           f"zoompan=z='1.16-0.00035*on':x='iw/2-iw/zoom/2+45*sin(on/110)':y='ih/2-ih/zoom/2+30*cos(on/120)':d=1:s={W}x{H}:fps=30,setsar=1")
         vf = f'[0:v]{background}[bg];'
@@ -204,8 +204,8 @@ def render(args):
                '[voice][duck]amix=inputs=2:duration=longest:normalize=0,alimiter=limit=0.95[a]')
         command = ['ffmpeg','-hide_banner','-loglevel','error','-y','-filter_complex_threads','2',*source]
         for i in range(3):
-            command += ['-loop','1','-framerate','30','-i',t/f'card{i}.png']
-        command += ['-loop','1','-framerate','30','-i',t/'pack.png']
+            command += ['-threads','1','-loop','1','-framerate','30','-i',t/f'card{i}.png']
+        command += ['-threads','1','-loop','1','-framerate','30','-i',t/'pack.png']
         command += ['-i',audio,'-i',music,'-filter_complex',vf,'-map','[v]','-map','[a]',
                     '-t','10','-r','30','-c:v','libx264','-threads','2','-preset','medium','-crf','19',
                     '-c:a','aac','-b:a','192k','-ar','48000','-movflags','+faststart',args.output]
@@ -223,7 +223,7 @@ def render(args):
 
 def parser():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--bottle', type=Path, default=ASSETS/'bagus_bottle.png')
+    p.add_argument('--bottle', type=Path, default=ASSETS/'bsb.png')
     p.add_argument('--meal', type=Path, default=ASSETS/'nasi_putih_ulam_fried_fish.png')
     p.add_argument('--output', type=Path, default=ROOT/'dist/bagus_sambal_belacan_10s.mp4')
     p.add_argument('--provider', choices=['stills','seedance'], default='stills')

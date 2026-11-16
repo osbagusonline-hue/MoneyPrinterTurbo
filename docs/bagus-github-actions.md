@@ -4,7 +4,7 @@
 
 `deliverables/bagus/bagus_sambal_belacan_10s.mp4` is a 10.000-second, 1080 × 1920, 30 fps H.264/yuv420p video with 48 kHz AAC audio. It uses:
 
-- The actual repository bottle (`assets/food_ads/bagus_bottle.png`), with the original label retained. The source is only 300 × 400 and contains white cutout edges; a higher-resolution transparent original will improve packshot quality.
+- The user-selected uploaded packshot (`assets/food_ads/bsb.png`, 1122 × 1402 RGBA), composited directly. This is the prepared AI cutout uploaded by the user; it differs from the original camera photograph in some label details.
 - A newly generated, cinematic serving illustration of **plain white rice, ulam, fried fish and sambal**. The old photo contains herb-mixed rice and egg and is not used.
 - A continuous drifting camera pullback on the food image, overlapping scene dissolves, an eased bottle entrance, and a continuous product shot through the Bagusmart CTA.
 - Malay female `ms-MY-YasminNeural` narration, cached with its actual word timing.
@@ -81,3 +81,7 @@ The full MoneyPrinterTurbo application suite was not run. Live Seedance generati
 ## Motion revision
 
 After feedback that the first edit felt rigid, the renderer now keeps the food visible throughout, dissolves overlapping scene layers, glides the actual bottle into place, and carries it continuously into the closing CTA. The ten-second format, Malay voice and subtitles remain. This is still image-based motion design; real moving steam, food handling or pouring requires generated/supplied footage. The revised native render, full decode, frame inspection, five unit tests and Ruff checks passed.
+
+## Selected bottle update
+
+The user uploaded `assets/food_ads/bsb.png` on main and requested an immediate render. CLI, WebUI and Actions defaults now select that uploaded file. The MP4 has been rerendered with this packshot; narration, music, captions and motion timing remain unchanged.

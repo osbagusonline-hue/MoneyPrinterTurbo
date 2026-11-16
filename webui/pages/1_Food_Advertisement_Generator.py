@@ -104,7 +104,7 @@ if st.button("Generate MP4", type="primary"):
     else:
         with tempfile.TemporaryDirectory(prefix="bagus-ad-") as temp:
             work = Path(temp)
-            bottle = assets / "bagus_bottle.png"
+            bottle = assets / "bsb.png"
             meal = assets / "nasi_putih_ulam_fried_fish.png"
             if bottle_upload:
                 bottle = work / ("bottle" + Path(bottle_upload.name).suffix.lower())

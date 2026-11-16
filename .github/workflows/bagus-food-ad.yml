@@ -22,7 +22,7 @@ on:
         default: stills
       bottle_path:
         description: 'Original bottle reference'
-        default: 'assets/food_ads/bagus_bottle.png'
+        default: 'assets/food_ads/bsb.png'
       meal_path:
         description: 'Plain white rice, ulam and fried fish reference'
         default: 'assets/food_ads/nasi_putih_ulam_fried_fish.png'
@@ -56,7 +56,7 @@ jobs:
           restore-keys: food-ad-seedance-${{ github.ref_name }}-
       - name: Render and validate commercial
         env:
-          BOTTLE_PATH: ${{ inputs.bottle_path || 'assets/food_ads/bagus_bottle.png' }}
+          BOTTLE_PATH: ${{ inputs.bottle_path || 'assets/food_ads/bsb.png' }}
           MEAL_PATH: ${{ inputs.meal_path || 'assets/food_ads/nasi_putih_ulam_fried_fish.png' }}
           FOOD_PROVIDER: ${{ inputs.provider || 'stills' }}
           VOLCENGINE_ARK_API_KEY: ${{ secrets.VOLCENGINE_ARK_API_KEY }}

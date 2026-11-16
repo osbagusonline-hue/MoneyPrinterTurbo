@@ -32,7 +32,7 @@
       "start_time": "0.000000",
       "duration_ts": 153600,
       "duration": "10.000000",
-      "bit_rate": "3105533",
+      "bit_rate": "3186159",
       "bits_per_raw_sample": "8",
       "nb_frames": "300",
       "extradata_size": 48,
@@ -118,7 +118,7 @@
     }
   ],
   "format": {
-    "filename": "work/revision/bagus_sambal_belacan_10s.mp4",
+    "filename": "work/new-bottle/bagus_sambal_belacan_10s.mp4",
     "nb_streams": 2,
     "nb_programs": 0,
     "nb_stream_groups": 0,
@@ -126,8 +126,8 @@
     "format_long_name": "QuickTime / MOV",
     "start_time": "0.000000",
     "duration": "10.000000",
-    "size": "4100912",
-    "bit_rate": "3280729",
+    "size": "4201694",
+    "bit_rate": "3361355",
     "probe_score": 100,
     "tags": {
       "major_brand": "isom",
