@@ -70,24 +70,20 @@ def layouts(bottle, directory, cta):
             text(d, 310, 'Asal berselera.', 74)
             text(d, 440, 'NASI PUTIH  ·  ULAM  ·  IKAN GORENG', 30, '#e5ca87')
         else:
-            d.rectangle((0, 0, W, H), fill=(14, 27, 18, 210 if i == 1 else 255))
+            d.rectangle((0, 0, W, H), fill=(14, 27, 18, 100 if i == 1 else 175))
             text(d, 170, 'BAGUS', 54, '#e4be6b', True)
             text(d, 260, 'Sambal Belacan', 84, bold=True)
             text(d, 365, 'TRADITIONAL', 29, '#e4be6b')
-            pack = bottle.copy()
-            pack.thumbnail((650, 880 if i == 1 else 780), Image.Resampling.LANCZOS)
-            # thumbnail does not enlarge; resize preserving aspect for the low-res source.
-            height = 880 if i == 1 else 780
-            pack = bottle.resize((round(bottle.width * height / bottle.height), height), Image.Resampling.LANCZOS)
-            card.alpha_composite(pack, ((W-pack.width)//2, 480))
             d = ImageDraw.Draw(card)
             if i == 1:
-                text(d, 1440, 'Lagi berselera.', 66, bold=True)
+                text(d, 1460, 'Sekali cicah, lagi berselera.', 45)
             else:
                 d.rounded_rectangle((150, 1330, 930, 1445), radius=57, fill='#e4be6b')
                 text(d, 1360, 'DAPATKAN DI BAGUSMART', 40, '#102218', True)
                 text(d, 1490, cta, 49)
         card.save(directory / f'card{i}.png')
+    height = 780
+    bottle.resize((round(bottle.width * height / bottle.height), height), Image.Resampling.LANCZOS).save(directory / 'pack.png')
 
 
 def compose_music(path):
@@ -186,20 +182,30 @@ def render(args):
         else:
             source = ['-loop', '1', '-framerate', '30', '-i', args.meal]
             background = (f'scale=2160:3840:force_original_aspect_ratio=increase,crop=2160:3840,'
-                          f"zoompan=z='1+0.00035*on':x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d=1:s={W}x{H}:fps=30,setsar=1")
+                          f"zoompan=z='1.16-0.00035*on':x='iw/2-iw/zoom/2+45*sin(on/110)':y='ih/2-ih/zoom/2+30*cos(on/120)':d=1:s={W}x{H}:fps=30,setsar=1")
         vf = f'[0:v]{background}[bg];'
-        for i, (start, end) in enumerate(((0,3),(3,7),(7,10))):
+        # Overlapping alpha dissolves keep the meal moving through every scene.
+        fades = ["fade=t=in:st=0:d=0.35:alpha=1,fade=t=out:st=2.5:d=0.6:alpha=1",
+                 "fade=t=in:st=2.6:d=0.7:alpha=1,fade=t=out:st=6.7:d=0.7:alpha=1",
+                 "fade=t=in:st=6.7:d=0.7:alpha=1"]
+        for i, fade in enumerate(fades):
             prev = 'bg' if i == 0 else f'v{i-1}'
-            vf += f"[{prev}][{i+1}:v]overlay=enable='gte(t,{start})*lt(t,{end})'[v{i}];"
+            vf += f"[{i+1}:v]format=rgba,{fade}[card{i}];"
+            vf += f"[{prev}][card{i}]overlay[v{i}];"
+        # A single packshot glides into frame, then remains continuous into the CTA.
+        vf += "[4:v]format=rgba,fade=t=in:st=3:d=0.7:alpha=1[pack];"
+        vf += ("[v2][pack]overlay=x='(W-w)/2+200*exp(-max(t-3,0)*3)':"
+               "y='475+50*exp(-max(t-3,0)*3)-3*max(t-3,0)'[hero];")
         style = 'FontName=DejaVu Sans,FontSize=8,PrimaryColour=&H00FFFFFF,OutlineColour=&H00131B10,BorderStyle=3,Outline=2,Shadow=0,MarginV=22'
-        vf += f"[v2]subtitles=filename={t/'captions.srt'}:force_style='{style}',format=yuv420p[v];"
-        vf += ('[4:a]aresample=48000,apad,atrim=duration=10,asetpts=PTS-STARTPTS,asplit=2[voice][sc];'
-               '[5:a]aresample=48000,apad,atrim=duration=10,volume=0.55[bed];'
+        vf += f"[hero]subtitles=filename={t/'captions.srt'}:force_style='{style}',format=yuv420p[v];"
+        vf += ('[5:a]aresample=48000,apad,atrim=duration=10,asetpts=PTS-STARTPTS,asplit=2[voice][sc];'
+               '[6:a]aresample=48000,apad,atrim=duration=10,volume=0.55[bed];'
                '[bed][sc]sidechaincompress=threshold=0.025:ratio=6:attack=10:release=250[duck];'
                '[voice][duck]amix=inputs=2:duration=longest:normalize=0,alimiter=limit=0.95[a]')
         command = ['ffmpeg','-hide_banner','-loglevel','error','-y','-filter_complex_threads','2',*source]
         for i in range(3):
-            command += ['-loop','1','-i',t/f'card{i}.png']
+            command += ['-loop','1','-framerate','30','-i',t/f'card{i}.png']
+        command += ['-loop','1','-framerate','30','-i',t/'pack.png']
         command += ['-i',audio,'-i',music,'-filter_complex',vf,'-map','[v]','-map','[a]',
                     '-t','10','-r','30','-c:v','libx264','-threads','2','-preset','medium','-crf','19',
                     '-c:a','aac','-b:a','192k','-ar','48000','-movflags','+faststart',args.output]

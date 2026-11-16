@@ -6,7 +6,7 @@
 
 - The actual repository bottle (`assets/food_ads/bagus_bottle.png`), with the original label retained. The source is only 300 × 400 and contains white cutout edges; a higher-resolution transparent original will improve packshot quality.
 - A newly generated, cinematic serving illustration of **plain white rice, ulam, fried fish and sambal**. The old photo contains herb-mixed rice and egg and is not used.
-- A slow digital camera push on the food image, then product and Bagusmart end cards.
+- A continuous drifting camera pullback on the food image, overlapping scene dissolves, an eased bottle entrance, and a continuous product shot through the Bagusmart CTA.
 - Malay female `ms-MY-YasminNeural` narration, cached with its actual word timing.
 - An original locally synthesized pluck/pad/pulse music bed, ducked under narration.
 - Burned-in Malay captions, plus a separate SRT. CTA: `bagusmart.sg`.
@@ -77,3 +77,7 @@ Actions restores/saves these receipts for manual Seedance runs and uploads them 
 - Audio analysis: approximately −19.8 LUFS integrated and −5.2 dBTP on the inspected encode; audible samples present with headroom.
 
 The full MoneyPrinterTurbo application suite was not run. Live Seedance generation was not run because no key/credits were provided. See the accompanying PR checks for validation of the revised GitHub workflow.
+
+## Motion revision
+
+After feedback that the first edit felt rigid, the renderer now keeps the food visible throughout, dissolves overlapping scene layers, glides the actual bottle into place, and carries it continuously into the closing CTA. The ten-second format, Malay voice and subtitles remain. This is still image-based motion design; real moving steam, food handling or pouring requires generated/supplied footage. The revised native render, full decode, frame inspection, five unit tests and Ruff checks passed.
