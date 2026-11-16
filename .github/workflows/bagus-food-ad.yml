@@ -1,5 +1,11 @@
 name: Bagus Food Advertisement MP4
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'assets/food_ads/**'
+      - 'projects/food_ads/**'
   workflow_dispatch:
     inputs:
       bottle_path:
@@ -29,8 +35,8 @@ jobs:
           python -m pip install edge-tts==7.3.1
       - name: Render commercial
         env:
-          BOTTLE_PATH: ${{ inputs.bottle_path }}
-          MEAL_PATH: ${{ inputs.meal_path }}
+          BOTTLE_PATH: ${{ inputs.bottle_path || 'assets/food_ads/bagus_bottle.png' }}
+          MEAL_PATH: ${{ inputs.meal_path || 'assets/food_ads/nasi_ulam_fried_fish.jpg' }}
         run: |
           python scripts/render_bagus_food_ad.py --bottle "$BOTTLE_PATH" --meal "$MEAL_PATH" --output dist/bagus_sambal_belacan_10s.mp4
       - uses: actions/upload-artifact@v4
